@@ -536,7 +536,7 @@ export default function App() {
       let backendUrl = import.meta.env.VITE_API_URL;
 
       if (!backendUrl) {
-        backendUrl = 'http://127.0.0.1:5000';
+        backendUrl = 'https://legalens-g03q.onrender.com';
       }
 
       // Remove trailing slash if present
