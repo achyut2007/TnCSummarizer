@@ -134,7 +134,7 @@ def analyze_risks_fallback(text):
             
     return risks
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/', methods=['POST'])
 def analyze_endpoint():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
