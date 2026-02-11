@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   UploadCloud,
   FileText,
@@ -97,7 +97,7 @@ const Navbar = ({ isDarkMode, toggleTheme, reset, status }) => (
         <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-110">
           <ShieldCheck className="w-5 h-5 text-white" />
         </div>
-        <span className="text-xl font-bold bg-clip-text text-transparent bg-linear-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300">
+        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300">
           LegalLens
         </span>
       </div>
@@ -130,7 +130,7 @@ const Navbar = ({ isDarkMode, toggleTheme, reset, status }) => (
 
 const HeroSection = ({ onUpload, status, progress }) => (
   <div className="flex flex-col items-center justify-center mt-12 sm:mt-24 text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-    <div className="space-y-4 max-w-4xl px-4 min-h-40 sm:min-h-50 flex flex-col justify-center">
+    <div className="space-y-4 max-w-3xl px-4 min-h-[160px] sm:min-h-[200px] flex flex-col justify-center">
       <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight transition-colors duration-300">
         <span className="block mb-2">Don't Agree Blindly.</span>
         <span className="text-indigo-600 dark:text-indigo-400 block h-[1.2em] transition-colors duration-300">
@@ -174,7 +174,7 @@ const HeroSection = ({ onUpload, status, progress }) => (
         </label>
       ) : (
         /* In-Place Loader */
-        <div className="flex flex-col items-center justify-center w-full h-64 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-8 animate-in fade-in zoom-in-95 transition-colors duration-300">
+        <div className="flex flex-col items-center justify-center w-full h-64 rounded-3xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-8 animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300">
           <div className="w-full max-w-md space-y-6">
             <div className="flex flex-col items-center gap-4">
               {status === 'analyzing' ? (
@@ -248,7 +248,7 @@ const SummaryCard = ({ summary, onDownload }) => (
 // FILE: src/components/dashboard/RiskList.jsx
 // ==========================================
 
-const RiskList = ({ risks, activeRiskId, onRiskClick }) => (
+const RiskList = ({ risks, activeRiskId, onRiskHover }) => (
   <div className="space-y-4">
     <div className="flex items-center justify-between px-1">
       <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider transition-colors duration-300">
@@ -263,7 +263,7 @@ const RiskList = ({ risks, activeRiskId, onRiskClick }) => (
       {risks.map((risk) => (
         <div
           key={risk.id}
-          onClick={() => onRiskClick(risk.id)}
+          onMouseEnter={() => onRiskHover(risk.id)} // Hover trigger for instant feedback
           className={`
             group bg-white dark:bg-slate-900 rounded-xl border p-4 cursor-pointer transition-all duration-300 relative overflow-hidden
             ${activeRiskId === risk.id
@@ -290,7 +290,7 @@ const RiskList = ({ risks, activeRiskId, onRiskClick }) => (
             {risk.explanation}
           </div>
 
-          <div className="mt-3 flex items-center text-xs font-medium text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className={`mt-3 flex items-center text-xs font-medium text-indigo-600 dark:text-indigo-400 transition-opacity duration-300 ${activeRiskId === risk.id ? 'opacity-100' : 'opacity-0'}`}>
             View in document <ChevronRight className="w-3 h-3 ml-1" />
           </div>
         </div>
@@ -306,60 +306,103 @@ const RiskList = ({ risks, activeRiskId, onRiskClick }) => (
 const DocumentViewer = ({ data, activeRiskId, setActiveRiskId }) => {
   if (!data) return null;
 
-  // Use text from backend
   const textContent = data.text;
 
-  // Highlighter logic
-  const renderText = () => {
+  // AUTO-SCROLL LOGIC
+  useEffect(() => {
+    if (activeRiskId) {
+      // Find the first occurrence of this risk in the DOM
+      // We search for elements with IDs starting with risk-highlight-{id}-
+      // This handles cases where a risk snippet appears multiple times
+      const element = document.querySelector(`[id^='risk-highlight-${activeRiskId}-']`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [activeRiskId]);
+
+  // ROBUST HIGHLIGHTER ENGINE
+  const renderText = useMemo(() => {
     const sortedRisks = [...data.risks].sort((a, b) => b.snippet.length - a.snippet.length);
 
-    return (
-      <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-300 transition-colors duration-300">
-        {textContent.split('\n').map((line, lineIdx) => {
-          let lineContent = [line];
+    // 1. Build a robust regex pattern
+    // This allows for 'smart' matching where quotes and dashes are treated leniently
+    const patterns = sortedRisks.map(risk => {
+      // Escape special regex characters
+      let pattern = risk.snippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-          sortedRisks.forEach(risk => {
-            const newContent = [];
-            lineContent.forEach(segment => {
-              // Check if the segment contains the risk snippet
-              if (typeof segment === 'string' && segment.includes(risk.snippet)) {
-                const parts = segment.split(risk.snippet);
-                parts.forEach((part, i) => {
-                  newContent.push(part);
-                  if (i < parts.length - 1) {
-                    newContent.push(
-                      <span
-                        key={`risk-${risk.id}-${lineIdx}-${i}`}
-                        id={`risk-highlight-${risk.id}`}
-                        className={`
-                           cursor-pointer transition-all duration-300 rounded px-1 py-0.5 mx-0.5
-                           ${activeRiskId === risk.id ? 'scale-105 shadow-sm ring-2 ring-indigo-500 z-10 relative' : ''}
-                           ${risk.type === 'High' ? 'bg-red-200/50 dark:bg-red-900/40 text-red-900 dark:text-red-200 border-b-2 border-red-400' : ''}
-                           ${risk.type === 'Medium' ? 'bg-amber-200/50 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 border-b-2 border-amber-400' : ''}
-                           ${risk.type === 'Low' ? 'bg-emerald-200/50 dark:bg-emerald-900/40 text-emerald-900 dark:text-emerald-200 border-b-2 border-emerald-400' : ''}
-                         `}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveRiskId(risk.id);
-                        }}
-                      >
-                        {risk.snippet}
-                      </span>
-                    );
-                  }
-                });
-              } else {
-                newContent.push(segment);
-              }
-            });
-            lineContent = newContent;
+      // Allow flexible whitespace (newlines, tabs, spaces)
+      pattern = pattern.replace(/\s+/g, '[\\s\\n]+');
+
+      // Allow flexible quotes (straight ' vs curly ’) and dashes
+      pattern = pattern.replace(/['’]/g, "['’]");
+      pattern = pattern.replace(/["”]/g, '["”]');
+      pattern = pattern.replace(/[-–—]/g, '[-–—]');
+
+      return pattern;
+    });
+
+    if (patterns.length === 0) {
+      return (
+        <div className="whitespace-pre-wrap font-serif text-slate-800 dark:text-slate-300 leading-relaxed">
+          {textContent}
+        </div>
+      );
+    }
+
+    // 2. Create the Master Regex
+    const combinedPattern = `(${patterns.join('|')})`;
+    const regex = new RegExp(combinedPattern, 'gi');
+
+    // 3. Split the text
+    const parts = textContent.split(regex);
+
+    return (
+      <div className="whitespace-pre-wrap font-serif text-[15px] text-slate-800 dark:text-slate-300 leading-7">
+        {parts.map((part, i) => {
+          // Normalize both parts for comparison to find which risk this part belongs to
+          const normalize = (str) => str.replace(/\s+/g, ' ').replace(/['’]/g, "'").replace(/["”]/g, '"').replace(/[-–—]/g, '-').trim().toLowerCase();
+          const normPart = normalize(part);
+
+          const matchedRisk = sortedRisks.find(r => {
+            const normSnippet = normalize(r.snippet);
+            return normPart === normSnippet && normPart.length > 5;
           });
 
-          return <div key={lineIdx} className="min-h-[1.5em]">{lineContent}</div>;
+          if (matchedRisk) {
+            const isActive = activeRiskId === matchedRisk.id;
+
+            // Highlighting Style:
+            // Active: Bright Yellow background + Dark text (High Visibility)
+            // Inactive: Transparent background (Look like normal text)
+
+            let highlightClass = '';
+
+            if (isActive) {
+              // Only pure text background highlight, no box model changes (padding/radius removed)
+              highlightClass = 'bg-yellow-300 dark:bg-yellow-500 text-slate-900';
+            } else {
+              // Totally transparent when not active, effectively hiding the highlight
+              highlightClass = 'bg-transparent text-inherit font-normal';
+            }
+
+            return (
+              <mark
+                key={i}
+                // Append index to ID to make it unique if snippet repeats
+                id={`risk-highlight-${matchedRisk.id}-${i}`}
+                onClick={(e) => { e.stopPropagation(); setActiveRiskId(matchedRisk.id); }}
+                className={`cursor-pointer transition-colors duration-200 ${highlightClass}`}
+              >
+                {part}
+              </mark>
+            );
+          }
+          return <span key={i}>{part}</span>;
         })}
       </div>
     );
-  };
+  }, [data, activeRiskId, setActiveRiskId, textContent]);
 
   return (
     <div className="md:col-span-8 h-full bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col transition-colors duration-300">
@@ -378,9 +421,10 @@ const DocumentViewer = ({ data, activeRiskId, setActiveRiskId }) => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-50/50 dark:bg-slate-950/50 transition-colors duration-300" onClick={() => setActiveRiskId(null)}>
-        <div className="max-w-3xl mx-auto bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 min-h-full p-8 sm:p-12 rounded-lg transition-colors duration-300">
-          {renderText()}
+      <div className="flex-1 overflow-y-auto p-8 sm:p-12 bg-slate-50 dark:bg-[#0B1120] transition-colors duration-300" onClick={() => setActiveRiskId(null)}>
+        {/* Paper Document Effect */}
+        <div className="max-w-3xl mx-auto bg-white dark:bg-[#151b2b] shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-200 dark:border-slate-800 min-h-full p-12 rounded-sm transition-colors duration-300">
+          {renderText}
         </div>
       </div>
     </div>
@@ -395,13 +439,11 @@ export default function App() {
   const [status, setStatus] = useState('idle'); // idle, uploading, analyzing, complete
   const [data, setData] = useState(null);
   const [activeRiskId, setActiveRiskId] = useState(null);
-  // Initialize state based on system preference immediately
   const [isDarkMode, setIsDarkMode] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Sync state with HTML class (Best practice for Tailwind)
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -412,18 +454,13 @@ export default function App() {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  // Scroll to highlighted text when a risk is clicked
-  const scrollToRisk = (id) => {
+  // Scroll to highlighted text when a risk is hovered
+  const handleRiskHover = (id) => {
+    if (activeRiskId === id) return;
     setActiveRiskId(id);
-    const element = document.getElementById(`risk-highlight-${id}`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    // Scrolling logic is now inside DocumentViewer via useEffect to ensure robust rendering
   };
 
-  // ------------------------------------------------------------------------
-  // REAL BACKEND CONNECTION
-  // ------------------------------------------------------------------------
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -431,7 +468,6 @@ export default function App() {
     setStatus('uploading');
     setUploadProgress(0);
 
-    // 1. Progress Bar Animation (Fake visual progress while real upload happens)
     let progress = 0;
     const interval = setInterval(() => {
       progress += Math.floor(Math.random() * 10) + 2;
@@ -439,13 +475,11 @@ export default function App() {
       setUploadProgress(progress);
     }, 200);
 
-    // 2. Prepare Data
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      // 3. Send to Flask Backend
-      // Using 127.0.0.1 avoids issues where 'localhost' resolves to IPv6 on some machines
+      // Connects to local Flask backend
       const response = await fetch('http://127.0.0.1:5000/analyze', {
         method: 'POST',
         body: formData,
@@ -459,10 +493,8 @@ export default function App() {
         throw new Error('Server returned error');
       }
 
-      // 4. Parse Result
       const result = await response.json();
 
-      // Artificial delay to let the user see the "Analyzing" state for a moment
       setTimeout(() => {
         setData(result);
         setStatus('complete');
@@ -559,7 +591,7 @@ Snippet: "${r.snippet}"
                 <RiskList
                   risks={data.risks}
                   activeRiskId={activeRiskId}
-                  onRiskClick={scrollToRisk}
+                  onRiskHover={handleRiskHover}
                 />
               </div>
 
