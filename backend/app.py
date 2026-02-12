@@ -39,11 +39,11 @@ def analyze_with_ai(text):
 
     # Priorities based on available models
     model_options = [
+        'gemini-2.5-pro',
         'gemini-2.5-flash',
         'gemini-2.0-flash',
         'gemini-flash-latest',
-        'gemini-1.5-flash',
-        'gemini-pro'
+        'gemini-1.5-flash'
     ]
 
     model = None
